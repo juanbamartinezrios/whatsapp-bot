@@ -35,7 +35,7 @@ Un bot de seguimiento de gastos para WhatsApp que ayuda a gestionar gastos diari
 ### 1. Clonar el repositorio
 ```bash
 git clone <repository-url>
-cd whatsapp-expense-tracker
+cd whatsapp-bot
 ```
 
 ### 2. Instalar dependencias
@@ -62,9 +62,7 @@ node server.js
 
 ### 5. Usar ngrok o localtunnel para obtener la url local o deployar el código
 ```bash
-ngrok http 3000
-|
-lt --port 3000
+ngrok http 3000 || lt --port 3000
 ```
 
 ### 6. Configurar webhook en Twilio
