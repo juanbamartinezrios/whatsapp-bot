@@ -119,93 +119,92 @@ async function deleteExpense(amount, category, date) {
     return `✅ Eliminado ${category} gasto de 💰 $${amount} del 📅 ${startDate.toISOString().split("T")[0]}`;
 }
 
+const DEFAULT_UNKNOWN_INTENT_REPLY =
+    "❌ Perdón, no entendí. Escribí 🙋‍♂️ 'ayuda' para ver los comandos disponibles.";
+
+const intentHandlers = {
+    agregar_gastos: async ({ extracted_fields, user }) => {
+        if (extracted_fields.gastos && extracted_fields.gastos.length > 0) {
+            return addExpenses(extracted_fields.gastos, extracted_fields.date, user);
+        }
+        return "❌ Por favor, especificá los montos y categorías. Ejemplo: '100 café, 200 chocolate'";
+    },
+
+    agregar_gasto: async ({ extracted_fields, user }) => {
+        if (extracted_fields.amount && extracted_fields.category) {
+            const expenseDate = inferDate(extracted_fields.date);
+            const normalizedCategory = await normalizeCategory(extracted_fields.category);
+            const gasto = new Gasto({
+                amount: extracted_fields.amount,
+                category: normalizedCategory,
+                date: expenseDate,
+                user: user,
+            });
+            await gasto.save();
+
+            return `✅ Agregado $${extracted_fields.amount} para \n📊 ${normalizedCategory} el 📅 ${expenseDate.toISOString().split("T")[0]}`;
+        }
+        return "❌ Por favor, especificá el monto y la categoría. Ejemplo: 'Gasté $500 en comida ayer'";
+    },
+
+    query: async ({ extracted_fields }) => {
+        if (extracted_fields.type === "total") {
+            return getTotal(extracted_fields.period);
+        }
+        if (extracted_fields.type === "category" && extracted_fields.category) {
+            return getTotalByCategory(extracted_fields.category);
+        }
+        return "❌ Por favor, proporcioná una consulta válida. Ejemplo: '¿Cuánto gasté en comidas?'";
+    },
+
+    listar_gastos: async () => `📜 Todos los Gastos:\n${await getAllExpenses()}`,
+
+    ayuda: async () => getInstructions(),
+
+    editar_gasto: async ({ extracted_fields }) => {
+        if (
+            extracted_fields.previous_amount &&
+            extracted_fields.previous_category &&
+            extracted_fields.new_amount
+        ) {
+            return "❌ La edición de gastos no está disponible por el momento.";
+        }
+        return "❌ Por favor, especificá el gasto a editar. Ejemplo: 'Cambiar gasto de 500 en comida a 600'";
+    },
+
+    eliminar_gasto: async ({ extracted_fields }) => {
+        if (extracted_fields.amount && extracted_fields.category) {
+            return deleteExpense(
+                extracted_fields.amount,
+                extracted_fields.category,
+                extracted_fields.date,
+            );
+        }
+        return "❌ Por favor, especificá el gasto a eliminar. Ejemplo: 'Eliminar gasto de 300 en comestibles de ayer'";
+    },
+};
+
 async function handleWhatsappMessage(req, res) {
     const twiml = new MessagingResponse();
+    let reply;
 
     try {
         const processed = await processMessage(req.body.Body);
         const user = {
             phone: req.body.WaId,
             name: req.body.WaId === process.env.WHATSAPP_SENDER_WAID_1 ? "JUANBA" : "AILIN",
-        }
+        };
         const { intent, extracted_fields } = processed;
+        const ctx = { extracted_fields, user };
 
-        if (intent === "agregar_gastos") {
-            if (extracted_fields.gastos && extracted_fields.gastos.length > 0) {
-                twiml.message(
-                    await addExpenses(
-                        extracted_fields.gastos,
-                        extracted_fields.date,
-                        user
-                    ),
-                );
-            } else {
-                twiml.message("❌ Por favor, especificá los montos y categorías. Ejemplo: '100 café, 200 chocolate'");
-            }
-        } else if (intent === "agregar_gasto") {
-            if (extracted_fields.amount && extracted_fields.category) {
-                const expenseDate = inferDate(extracted_fields.date);
-                const normalizedCategory = await normalizeCategory(extracted_fields.category);
-                const gasto = new Gasto({
-                    amount: extracted_fields.amount,
-                    category: normalizedCategory,
-                    date: expenseDate,
-                    user: user
-                });
-                await gasto.save();
-
-                twiml.message(`✅ Agregado $${extracted_fields.amount} para \n📊 ${normalizedCategory} el 📅 ${expenseDate.toISOString().split("T")[0]}`);
-            } else {
-                twiml.message("❌ Por favor, especificá el monto y la categoría. Ejemplo: 'Gasté $500 en comida ayer'");
-            }
-        } else if (intent === "query") {
-            if (extracted_fields.type === "total") {
-                twiml.message(await getTotal(extracted_fields.period));
-            } else if (extracted_fields.type === "category" && extracted_fields.category) {
-                twiml.message(await getTotalByCategory(extracted_fields.category));
-            } else {
-                twiml.message("❌ Por favor, proporcioná una consulta válida. Ejemplo: '¿Cuánto gasté en comidas?'");
-            }
-        } else if (intent === "listar_gastos") {
-            twiml.message(`📜 Todos los Gastos:\n${await getAllExpenses()}`);
-        } else if (intent === "ayuda") {
-            twiml.message(getInstructions());
-        } else if (intent === "editar_gasto") {
-            if (
-                extracted_fields.previous_amount &&
-                extracted_fields.previous_category &&
-                extracted_fields.new_amount
-            ) {
-                twiml.message(
-                    await editExpense(
-                        extracted_fields.previous_amount,
-                        extracted_fields.previous_category,
-                        extracted_fields.new_amount,
-                    ),
-                );
-            } else {
-                twiml.message("❌ Por favor, especificá el gasto a editar. Ejemplo: 'Cambiar gasto de 500 en comida a 600'");
-            }
-        } else if (intent === "eliminar_gasto") {
-            if (extracted_fields.amount && extracted_fields.category) {
-                twiml.message(
-                    await deleteExpense(
-                        extracted_fields.amount,
-                        extracted_fields.category,
-                        extracted_fields.date,
-                    ),
-                );
-            } else {
-                twiml.message("❌ Por favor, especificá el gasto a eliminar. Ejemplo: 'Eliminar gasto de 300 en comestibles de ayer'");
-            }
-        } else {
-            twiml.message("❌ Perdón, no entendí. Escribí 🙋‍♂️ 'ayuda' para ver los comandos disponibles.");
-        }
+        const handler = intentHandlers[intent];
+        reply = handler ? await handler(ctx) : DEFAULT_UNKNOWN_INTENT_REPLY;
     } catch (error) {
         console.error("❌ Error:", error);
-        twiml.message("⚠️ Por favor, intentá de nuevo.");
+        reply = "⚠️ Por favor, intentá de nuevo.";
     }
 
+    twiml.message(reply);
     res.type("text/xml").send(twiml.toString());
 }
 
